@@ -1,0 +1,57 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: Build
+    displayName: 'Build Stage'
+    jobs:
+      - job: Build
+        displayName: 'Build Job'
+        steps:
+          # Check out the repository
+          - checkout: self
+
+          # Install Node.js 20.x using the NodeTool task
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '20.x'
+            displayName: 'Install Node.js'
+
+          # Install dependencies, build, and run tests
+          - script: |
+              npm install
+              npm run build --if-present
+              npm run test --if-present
+            displayName: 'npm install, build, and test'
+
+          # Zip all files into release.zip
+          - script: |
+              zip -r release.zip ./*
+            displayName: 'Zip artifact for deployment'
+
+          # Publish release.zip as a build artifact named "node-app"
+          - publish: release.zip
+            artifact: node-app
+            displayName: 'Publish Artifact'
+
+  - stage: Deploy
+    displayName: 'Deploy Stage'
+    dependsOn: Build
+    jobs:
+      - job: Deploy
+        displayName: 'Deploy to Azure Web App'
+        steps:
+          # Deploy the zipped package to the Azure Web App
+          - task: AzureRmWebAppDeployment@4
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              ConnectionType: 'AzureRM'
+              azureSubscription: 'Sparc-Azure'
+              appType: 'webAppLinux'
+              WebAppName: 'app-sparc-dev-wus-001'
+              packageForLinux: '$(System.DefaultWorkingDirectory)/**/*.zip'
