@@ -13,30 +13,41 @@ stages:
       - job: Build
         displayName: 'Build Job'
         steps:
-          # Check out the repository
+          # 1. Checkout the repository
           - checkout: self
 
-          # Install Node.js 20.x using the NodeTool task
-          - task: NodeTool@0
+          # 2. Set up Python 3.12
+          # Use the UsePythonVersion task to ensure Python 3.12 is available.
+          - task: UsePythonVersion@0
             inputs:
-              versionSpec: '20.x'
-            displayName: 'Install Node.js'
+              versionSpec: '3.12'
+              addToPath: true
+            displayName: 'Use Python 3.12'
 
-          # Install dependencies, build, and run tests
+          # 3. Create and start a virtual environment and install dependencies
           - script: |
-              npm install
-              npm run build --if-present
-              npm run test --if-present
-            displayName: 'npm install, build, and test'
+              python -m venv venv
+              # Activate the virtual environment
+              source venv/bin/activate
+              pip install --upgrade pip
+              pip install -r requirements.txt
+            displayName: 'Create virtualenv and install dependencies'
 
-          # Zip all files into release.zip
+          # 4. (Optional) Run tests here if required, for example:
+          # - script: |
+          #     source venv/bin/activate
+          #     pytest
+          #   displayName: 'Run tests'
+
+          # 5. Zip the artifact for deployment.
+          # Note: Exclude the virtual environment folder.
           - script: |
-              zip -r release.zip ./*
+              zip -r release.zip . -x "venv/*"
             displayName: 'Zip artifact for deployment'
 
-          # Publish release.zip as a build artifact named "node-app"
+          # 6. Publish the zip file as an artifact named "python-app"
           - publish: release.zip
-            artifact: node-app
+            artifact: python-app
             displayName: 'Publish Artifact'
 
   - stage: Deploy
@@ -46,12 +57,15 @@ stages:
       - job: Deploy
         displayName: 'Deploy to Azure Web App'
         steps:
-          # Deploy the zipped package to the Azure Web App
+          # 1. Download the artifact from the Build stage.
+          - download: current
+            artifact: python-app
+            displayName: 'Download Artifact'
           - task: AzureRmWebAppDeployment@4
-            displayName: 'Deploy to Azure Web App'
             inputs:
               ConnectionType: 'AzureRM'
               azureSubscription: 'Sparc-Azure'
               appType: 'webAppLinux'
               WebAppName: 'app-sparc-dev-wus-001'
               packageForLinux: '$(System.DefaultWorkingDirectory)/**/*.zip'
+
