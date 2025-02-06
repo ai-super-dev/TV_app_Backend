@@ -65,7 +65,7 @@ stages:
           # 2. Verify the artifact was downloaded correctly
           - script: |
               echo "Listing downloaded artifacts:"
-              ls -la $(System.DefaultWorkingDirectory)/python-app
+              ls -la $(Pipeline.Workspace)/python-app
             displayName: 'Verify artifact download'
 
           # 3. Deploy using the correct path
@@ -75,6 +75,6 @@ stages:
               azureSubscription: 'Sparc-Azure'
               appType: 'webAppLinux'
               WebAppName: 'app-sparc-dev-wus-001'
-              packageForLinux: '$(System.DefaultWorkingDirectory)/python-app/release.zip'
+              packageForLinux: '$(Pipeline.Workspace)/python-app/release.zip'
 
 
