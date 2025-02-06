@@ -30,11 +30,12 @@ class DeviceStatus(str, Enum):
 
 class DeviceBase(BaseModel):
     device_id: str
+    url: str | None = None
     is_active: bool
     status: DeviceStatus = DeviceStatus.OFFLINE
 
-class DeviceCreate(BaseModel):
-    device_id: str
+class DeviceCreate(DeviceBase):
+    pass
 
 class Device(DeviceBase):
     id: int

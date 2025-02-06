@@ -23,4 +23,5 @@ class Device(Base):
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(String, unique=True, index=True)
     is_active = Column(Boolean, default=True)
-    status = Column(String, default=DeviceStatus.OFFLINE) 
+    status = Column(String, default=DeviceStatus.OFFLINE)
+    url = Column(String, nullable=True) 

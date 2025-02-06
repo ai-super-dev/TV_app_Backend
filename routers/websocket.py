@@ -7,6 +7,19 @@ from database import get_db
 import models
 from sqlalchemy.exc import SQLAlchemyError
 import logging
+from contextlib import contextmanager
+
+@contextmanager
+def session_scope(db):
+    """Provide a transactional scope around a series of operations."""
+    try:
+        yield db
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,109 +40,139 @@ class ConnectionManager:
         return client_id
 
     def disconnect(self, client_id: str):
+        """Synchronous disconnect - just remove from active connections"""
         if client_id in self.active_connections:
             del self.active_connections[client_id]
-            self.broadcast(f"Client {client_id} disconnected")
+            # await self.broadcast(f"Client {client_id} disconnected")
 
     async def send_personal_message(self, message: str, client_id: str):
         if client_id in self.active_connections:
             await self.active_connections[client_id].send_text(message)
 
     async def broadcast(self, message: str):
+        disconnected_clients = []
         for client_id, connection in self.active_connections.items():
             try:
                 await connection.send_text(message)
-            except (ClientDisconnected, WebSocketDisconnect):
-                logger.warning(f"Client {client_id} disconnected unexpectedly")
-                self.disconnect(client_id)
+            # except (ClientDisconnected, WebSocketDisconnect):
+            #     logger.warning(f"Client {client_id} disconnected unexpectedly")
+            #     await self.disconnect(client_id)
             except Exception as e:
                 logger.error(f"Error sending message to client {client_id}: {e}")
-                self.disconnect(client_id)
+                disconnected_clients.append(client_id)
+
+        # Clean up disconnected clients
+        for client_id in disconnected_clients:
+            self.disconnect(client_id)
 
     async def handle_device_connect(self, device_id: str) -> dict:
-        # Check if device exists
-        device = self.db.query(models.Device).filter(models.Device.device_id == device_id).first()
-        if not device_id:
-            return None
-        
-        if device:
-            # Update existing device status but keep is_active unchanged
-            device.status = models.DeviceStatus.ONLINE
-            self.db.commit()
-            action = "updated"
-        else:
-            # Create new device
-            device = models.Device(
-                device_id=device_id, 
-                status=models.DeviceStatus.ONLINE,
-                is_active=False  # Default to inactive
-            )
-            self.db.add(device)
-            self.db.commit()
-            self.db.refresh(device)
-            action = "created"
-
-        # Return current device state including is_active
-        return {
-            "type": "device_update",
-            "action": action,
-            "device": {
-                "id": device.id,
-                "device_id": device.device_id,
-                "is_active": device.is_active,
-                "status": device.status
-            }
-        }
- 
-    async def handle_device_disconnect(self, device_id: str) -> dict:
-        # Find and update device status in database
-        device = self.db.query(models.Device).filter(models.Device.device_id == device_id).first()
-        
-        if device:
-            device.status = models.DeviceStatus.OFFLINE
-            self.db.commit()
-            
-            return {
-                "type": "device_update",
-                "action": "disconnected",
-                "device": {
-                    "id": device.id,
-                    "device_id": device.device_id,
-                    "is_active": device.is_active,
-                    "status": device.status
-                }
-            }
-        return None
-
-    async def handle_websocket_disconnect(self, client_id: str):
-        await self.disconnect(client_id)
-        await self.broadcast(
-            json.dumps({
-                "type": "user_left",
-                "client_id": client_id,
-                "message": f"Client {client_id} left"
-            })
-        )
-
-    async def handle_lesson_state_change(self, device_id: str, is_active: bool) -> dict:
-        # Update device state in database
+        # Create new session for each operation
+        db = next(get_db())
         try:
-            # Start a new transaction
-            device = self.db.query(models.Device).filter(models.Device.device_id == device_id).first()
-            
-            if device:
-                device.is_active = is_active
-                self.db.commit()
+            with session_scope(db) as session:
+                device = session.query(models.Device).filter(models.Device.device_id == device_id).first()
                 
+                if device:
+                    # Update existing device status but keep is_active unchanged
+                    device.status = models.DeviceStatus.ONLINE
+                    # session.commit()
+                    action = "updated"
+                else:
+                    # Create new device
+                    device = models.Device(
+                        device_id=device_id, 
+                        status=models.DeviceStatus.ONLINE,
+                        is_active=False,  # Default to inactive
+                        url="",
+                    )
+                    session.add(device)
+                    # session.commit()
+                    session.refresh(device)
+                    action = "created"
+
+                # Return current device state including is_active
                 return {
-                    "type": "lesson_state_update",
+                    "type": "device_update",
+                    "action": action,
                     "device": {
                         "id": device.id,
                         "device_id": device.device_id,
                         "is_active": device.is_active,
-                        "status": device.status
+                        "status": device.status,
+                        "url": device.url,
                     }
                 }
+        except Exception as e:
+            logger.error(f"Error in handle_device_connect: {e}")
+            raise e
+ 
+    async def handle_device_disconnect(self, device_id: str) -> dict:
+        # Create new session for each operation
+        db = next(get_db())
+        try:
+            with session_scope(db) as session:
+                device = session.query(models.Device).filter(models.Device.device_id == device_id).first()
+                
+                if device:
+                    device.status = models.DeviceStatus.OFFLINE
+                    # session.commit()
+                    # session.refresh(device)
+                    
+                    return {
+                        "type": "device_update",
+                        "action": "disconnected",
+                        "device": {
+                            "id": device.id,
+                            "device_id": device.device_id,
+                            "is_active": device.is_active,
+                            "status": device.status,
+                            "url":device.url,
+                        }
+                    }
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error in handle_device_disconnect: {e}")
+            raise e
+
+    async def handle_websocket_disconnect(self, client_id: str):
+        """Handle WebSocket disconnect with cleanup and notification"""
+        self.disconnect(client_id)  # Remove from active connections
+        try:
+            # Notify remaining clients
+            message = json.dumps({
+                "type": "user_left",
+                "client_id": client_id,
+                "message": f"Client {client_id} left"
+            })
+            await self.broadcast(message)
+        except Exception as e:
+            logger.error(f"Error in handle_websocket_disconnect: {e}")
+
+    async def handle_lesson_state_change(self, device_id: str, is_active: bool) -> dict:
+        # Update device state in database
+        db = next(get_db())
+        try:
+            # Start a new transaction
+            with session_scope(self.db) as session:
+                device = session.query(models.Device).filter(models.Device.device_id == device_id).first()
+            
+                if device:
+                    device.is_active = is_active
+                    # self.db.commit()
+                    
+                    return {
+                        "type": "lesson_state_update",
+                        "device": {
+                            "id": device.id,
+                            "device_id": device.device_id,
+                            "is_active": device.is_active,
+                            "status": device.status,
+                            "url": device.url
+                        }
+                    }
+        
+                return None
             
         except SQLAlchemyError as e:
             # Rollback the transaction in case of an error
@@ -140,8 +183,6 @@ class ConnectionManager:
             # Optionally, close the session if you're done with it
             self.db.close()
         
-        
-        return None
 
 manager = ConnectionManager()
 
@@ -154,7 +195,8 @@ async def websocket_endpoint(websocket: WebSocket):
             json.dumps({
                 "type": "connection_established",
                 "client_id": client_id,
-                "message": "Connected to server"
+                "message": "Connected to server",
+                "url": "https://www.suite.tech/",
             }),
             client_id
         )
@@ -183,8 +225,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     await manager.broadcast(json.dumps(device_update))
                 elif message_data.get("type") == "device_disconnect":
                     device_update = await manager.handle_device_disconnect(message_data["deviceId"])
-                    if device_update:
-                        await manager.broadcast(json.dumps(device_update))
+                    # if device_update:
+                    await manager.broadcast(json.dumps(device_update))
                 elif message_data.get("type") == "lesson_state_change":
                     
                     state_update = await manager.handle_lesson_state_change(
