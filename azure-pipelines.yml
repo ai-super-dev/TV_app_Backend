@@ -76,5 +76,6 @@ stages:
               appType: 'webAppLinux'
               WebAppName: 'app-sparc-dev-wus-001'
               packageForLinux: '$(Pipeline.Workspace)/python-app/release.zip'
+              StartupCommand: 'uvicorn main:app --host 0.0.0.0 --port 8000'
 
 
