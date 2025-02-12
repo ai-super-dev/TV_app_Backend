@@ -85,6 +85,12 @@ stages:
               versionSpec: '$(pythonVersion)'
             displayName: 'Use Python version'
 
+          - task: AzureAppServiceManage@0
+            inputs:
+              azureSubscription: '$(azureServiceConnectionId)'
+              Action: 'Stop Azure App Service'
+              WebAppName: '$(webAppName)'
+
           - task: AzureWebApp@1
             displayName: 'Deploy Azure Web App : app-ragbackend-dev-wus-001'
             inputs:
@@ -93,3 +99,9 @@ stages:
               appName: '$(webAppName)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               startUpCommand: 'gunicorn -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 main:app'
+
+          - task: AzureAppServiceManage@0
+            inputs:
+              azureSubscription: '$(azureServiceConnectionId)'
+              Action: 'Start Azure App Service'
+              WebAppName: '$(webAppName)'
