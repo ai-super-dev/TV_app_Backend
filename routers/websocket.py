@@ -86,7 +86,7 @@ class ConnectionManager:
                         url="",
                     )
                     session.add(device)
-                    # session.commit()
+                    session.commit()
                     session.refresh(device)
                     action = "created"
 
