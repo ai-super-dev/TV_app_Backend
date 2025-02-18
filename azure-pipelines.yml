@@ -1,80 +1,107 @@
-trigger:
-  branches:
-    include:
-      - main
+# Python to Linux Web App on Azure
+# Build your Python project and deploy it to Azure as a Linux Web App.
+# Change python version to one thats appropriate for your application.
+# https://docs.microsoft.com/azure/devops/pipelines/languages/python
 
-pool:
-  vmImage: 'ubuntu-latest'
+trigger:
+- main
+
+variables:
+  # Azure Resource Manager connection created during pipeline creation
+  azureServiceConnectionId: '9cdfcab7-6ce7-41c4-9f41-deb680f9fec5'
+
+  # Web app name
+  webAppName: 'app-sparc-dev-wus-001'
+
+  # Agent VM image name
+  vmImageName: 'ubuntu-latest'
+
+  # Environment name
+  environmentName: 'app-sparc-dev-wus-001'
+
+  # Project root folder. Point to the folder containing manage.py file.
+  projectRoot: $(System.DefaultWorkingDirectory)
+
+  pythonVersion: '3.12'
 
 stages:
-  - stage: Build
-    displayName: 'Build Stage'
-    jobs:
-      - job: Build
-        displayName: 'Build Job'
-        steps:
-          # 1. Checkout the repository
-          - checkout: self
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: BuildJob
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '$(pythonVersion)'
+      displayName: 'Use Python $(pythonVersion)'
 
-          # 2. Set up Python 3.12
-          # Use the UsePythonVersion task to ensure Python 3.12 is available.
+    - script: |
+        python -m venv antenv
+        source antenv/bin/activate
+        python -m pip install --upgrade pip
+        pip install setup
+        pip install -r requirements.txt
+      workingDirectory: $(projectRoot)
+      displayName: "Install requirements"
+
+    - script: |
+        python -m pip install gunicorn
+        which gunicorn
+        gunicorn --version
+      workingDirectory: $(projectRoot)
+      displayName: "Verify Gunicorn Installation"
+
+    - task: ArchiveFiles@2
+      displayName: 'Archive files'
+      inputs:
+        rootFolderOrFile: '$(projectRoot)'
+        includeRootFolder: false
+        archiveType: zip
+        archiveFile: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+        replaceExistingArchive: true
+
+    - upload: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+      displayName: 'Upload package'
+      artifact: drop
+
+- stage: Deploy
+  displayName: 'Deploy Web App'
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - deployment: DeploymentJob
+    pool:
+      vmImage: $(vmImageName)
+    environment: $(environmentName)
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
           - task: UsePythonVersion@0
             inputs:
-              versionSpec: '3.12'
-              addToPath: true
-            displayName: 'Use Python 3.12'
+              versionSpec: '$(pythonVersion)'
+            displayName: 'Use Python version'
 
-          # 3. Create and start a virtual environment and install dependencies
-          - script: |
-              python -m venv venv
-              # Activate the virtual environment
-              source venv/bin/activate
-              pip install --upgrade pip
-              pip install -r requirements.txt
-            displayName: 'Create virtualenv and install dependencies'
-
-          # 4. (Optional) Run tests here if required, for example:
-          # - script: |
-          #     source venv/bin/activate
-          #     pytest
-          #   displayName: 'Run tests'
-
-          # 5. Zip the artifact for deployment.
-          # Note: Exclude the virtual environment folder.
-          - script: |
-              zip -r release.zip . -x "venv/*"
-            displayName: 'Zip artifact for deployment'
-
-          # 6. Publish the zip file as an artifact named "python-app"
-          - publish: release.zip
-            artifact: python-app
-            displayName: 'Publish Artifact'
-
-  - stage: Deploy
-    displayName: 'Deploy Stage'
-    dependsOn: Build
-    jobs:
-      - job: Deploy
-        displayName: 'Deploy to Azure Web App'
-        steps:
-          # 1. Download the artifact from the Build stage.
-          - download: current
-            artifact: python-app
-            displayName: 'Download Artifact'
-
-          # 2. Verify the artifact was downloaded correctly
-          - script: |
-              echo "Listing downloaded artifacts:"
-              ls -la $(Pipeline.Workspace)/python-app
-            displayName: 'Verify artifact download'
-
-          # 3. Deploy using the correct path
-          - task: AzureRmWebAppDeployment@4
+          - task: AzureAppServiceManage@0
             inputs:
-              ConnectionType: 'AzureRM'
-              azureSubscription: 'Sparc-Azure'
+              azureSubscription: '$(azureServiceConnectionId)'
+              Action: 'Stop Azure App Service'
+              WebAppName: '$(webAppName)'
+
+          - task: AzureWebApp@1
+            displayName: 'Deploy Azure Web App : app-ragbackend-dev-wus-001'
+            inputs:
+              azureSubscription: '$(azureServiceConnectionId)'
               appType: 'webAppLinux'
-              WebAppName: 'app-sparc-dev-wus-001'
-              packageForLinux: '$(Pipeline.Workspace)/python-app/release.zip'
+              appName: '$(webAppName)'
+              package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+              startUpCommand: 'gunicorn -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 main:app'
 
-
+          - task: AzureAppServiceManage@0
+            inputs:
+              azureSubscription: '$(azureServiceConnectionId)'
+              Action: 'Start Azure App Service'
+              WebAppName: '$(webAppName)'
