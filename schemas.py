@@ -33,6 +33,7 @@ class DeviceBase(BaseModel):
     url: str | None = None
     is_active: bool
     status: DeviceStatus = DeviceStatus.OFFLINE
+    name: str | None = None
 
 class DeviceCreate(DeviceBase):
     pass

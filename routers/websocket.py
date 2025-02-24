@@ -84,6 +84,7 @@ class ConnectionManager:
                         status=models.DeviceStatus.ONLINE,
                         is_active=False,  # Default to inactive
                         url="",
+                        name="unknown",
                     )
                     session.add(device)
                     session.commit()

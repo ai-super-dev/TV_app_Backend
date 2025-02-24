@@ -13,6 +13,10 @@ router = APIRouter()
 class DeviceUrlUpdate(BaseModel):
     url: str
 
+# Add this class for URL update request
+class DeviceNameUpdate(BaseModel):
+    name: str
+
 @router.get("/", response_model=List[schemas.Device])
 async def get_devices(
     db: Session = Depends(get_db),
@@ -59,6 +63,22 @@ async def update_device_url(
         raise HTTPException(status_code=404, detail="Device not found")
     
     device.url = url_update.url
+    db.commit()
+    db.refresh(device)
+    return device 
+
+@router.put("/name/{device_id}")
+async def update_device_name(
+    device_id: str,
+    name_update: DeviceNameUpdate,
+    db: Session = Depends(get_db),
+    current_user: schemas.User = Depends(get_current_user)
+):
+    device = db.query(models.Device).filter(models.Device.device_id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.name = name_update.name
     db.commit()
     db.refresh(device)
     return device 

@@ -25,3 +25,4 @@ class Device(Base):
     is_active = Column(Boolean, default=True)
     status = Column(String, default=DeviceStatus.OFFLINE)
     url = Column(String, nullable=True) 
+    name = Column(String, nullable=True) 
