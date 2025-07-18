@@ -16,10 +16,10 @@ load_dotenv()
 
 engine = create_engine(
     os.getenv("SQLALCHEMY_DATABASE_URL"),
-    pool_timeout=30,  # Increase timeout
-    pool_recycle=1800,  # Recycle connections after 30 minutes
-    pool_size=10,  # Number of connections to keep in the pool
-    max_overflow=5,  # Allow additional connections if the pool is exhausted
+    pool_timeout=60,  # Increase timeout to 1 minute
+    pool_recycle=2400,  # Recycle connections after 40 minutes
+    pool_size=20,  # Number of connections to keep in the pool
+    max_overflow=3,  # Allow additional connections if the pool is exhausted
     pool_pre_ping=True,  # Enable pre-ping to check if the connection is alive
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -32,3 +32,21 @@ def get_db():
         yield db
     finally:
         db.close() 
+
+def delete_db(db: Session, model_class, record_id: int):
+    record = db.query(model_class).filter(model_class.id == record_id).first()
+    if record:
+        db.delete(record)
+        db.commit()
+        return True
+    return False
+
+def update_db(db: Session, model_class, record_id: int, update_data: dict):
+    record = db.query(model_class).filter(model_class.id == record_id).first()
+    if record:
+        for key, value in update_data.items():
+            setattr(record, key, value)
+        db.commit()
+        db.refresh(record)
+        return record
+    return None
