@@ -17,9 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
-app.include_router(websocket.router, tags=["websocket"])
+# app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+# app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
+# app.include_router(websocket.router, tags=["websocket"])
 
 @app.get("/")
 async def root():
