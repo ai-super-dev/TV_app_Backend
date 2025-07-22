@@ -47,6 +47,27 @@ def get_user(db: Session, email: str):
         finally:
             db.close()
 
+def delete_user(db: Session, email: str):
+    retries = 3
+    for attempt in range(retries):
+        try:
+            user = db.query(models.User).filter(models.User.email == email).first()
+            if user:
+                db.delete(user)
+                db.commit()
+                return True  # Successfully deleted
+            return False  # User not found
+        except OperationalError as e:
+            db.rollback()
+            if attempt == retries - 1:
+                raise e
+            time.sleep(1)
+        except SQLAlchemyError as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()
+
 def authenticate_user(db: Session, email: str, password: str):
     user = get_user(db, email)
     if not user:
