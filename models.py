@@ -11,12 +11,6 @@ class User(Base):
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True) 
 
-class DeviceStatus(str, enum.Enum):
-    ONLINE = "online"
-    OFFLINE = "offline"
-    ERROR = "error"
-    MAINTENANCE = "maintenance"
-
 class Device(Base):
     __tablename__ = "devices"
 
